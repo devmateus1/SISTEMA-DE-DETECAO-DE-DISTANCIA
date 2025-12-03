@@ -13,11 +13,11 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define LED_VERDE    3
 #define BUZZER       6
 
-// --- CONFIGURAÇÕES DO SISTEMA ---
-#define DIST_MAX 20   // Distância máxima considerada (20 cm)
-#define MAX_CAIXAS 4  // Quantidade máxima de caixas pela nova lógica
+// --- CONFIGURAÇÕES ---
+#define DIST_MAX 30      // Tamanho da prateleira (cm)
+#define TAM_CAIXA 14     // Tamanho da caixa pequena (cm)
+#define MAX_CAIXAS 2     // Número máximo que realmente cabe
 
-// Variável para rastrear mudanças
 int caixas_anterior = -1;
 
 void setup() {
@@ -42,7 +42,8 @@ void setup() {
 // Leitura com média de 3 amostras
 long readDistance() {
   long total = 0;
-  int validReadings = 0;
+  int valid = 0;
+
   for (int i = 0; i < 3; i++) {
     digitalWrite(TRIG_PIN, LOW);
     delayMicroseconds(2);
@@ -53,17 +54,17 @@ long readDistance() {
     long duration = pulseIn(ECHO_PIN, HIGH, 30000);
     if (duration > 0) {
       total += duration;
-      validReadings++;
+      valid++;
     }
     delay(50);
   }
-  return (validReadings > 0) ? total / validReadings : 0;
+
+  return (valid > 0) ? total / valid : 0;
 }
 
-// 🔊 Beep
-void tocarBuzzerAlto() {
+void beepMudanca() {
   tone(BUZZER, 2500);
-  delay(300);
+  delay(250);
   noTone(BUZZER);
 }
 
@@ -75,71 +76,59 @@ void loop() {
     lcd.print("Dist: --- cm   ");
     lcd.setCursor(0, 1);
     lcd.print("Erro: sem eco  ");
-    Serial.println("Erro: Sem sinal de eco.");
+    return;
+  }
+
+  float distancia = duration * 0.0343 / 2.0;
+
+  // --- NOVA LOGICA ---
+  // 0 cm → 2 caixas
+  // 30 cm → 0 caixas
+  int caixas = map(distancia, 0, DIST_MAX, MAX_CAIXAS, 0);
+
+  if (caixas < 0) caixas = 0;
+  if (caixas > MAX_CAIXAS) caixas = MAX_CAIXAS;
+
+  // Situação do estoque
+  String status;
+  if (caixas == 0) status = "Vazio";
+  else if (caixas == 1) status = "Regular";
+  else status = "Bom";
+
+  // Detecta mudança
+  if (caixas != caixas_anterior) {
+    if (caixas_anterior != -1) {
+      beepMudanca();
+    }
+    caixas_anterior = caixas;
+  }
+
+  // LEDs
+  if (caixas == 0) {
+    digitalWrite(LED_VERMELHO, HIGH);
+    digitalWrite(LED_VERDE, LOW);
+  }
+  else if (caixas == 2) {
+    digitalWrite(LED_VERMELHO, LOW);
+    digitalWrite(LED_VERDE, HIGH);
+  }
+  else {
     digitalWrite(LED_VERMELHO, LOW);
     digitalWrite(LED_VERDE, LOW);
-  } else {
-    // Distância medida
-    float distancia = duration * 0.0343 / 2.0;
-
-    // --- NOVA LOGICA INVERTIDA ---
-    // 0 cm → 4 caixas
-    // 20 cm → 0 caixas
-    int caixas = map(distancia, 0, DIST_MAX, MAX_CAIXAS, 0);
-
-    // Limita faixa
-    if (caixas < 0) caixas = 0;
-    if (caixas > MAX_CAIXAS) caixas = MAX_CAIXAS;
-
-    // Status
-    String status;
-    if (caixas == 0) status = "Est.vazio";
-    else if (caixas == 1) status = "Ruim";
-    else if (caixas == 2) status = "Regular";
-    else status = "Bom";
-
-    // Buzzer em mudança
-    if (caixas != caixas_anterior) {
-      if (caixas_anterior != -1) {
-        tocarBuzzerAlto();
-        Serial.println("🔔 Mudanca detectada!");
-      }
-      caixas_anterior = caixas;
-    }
-
-    // LEDs
-    if (caixas <= 1) {
-      digitalWrite(LED_VERMELHO, HIGH);
-      digitalWrite(LED_VERDE, LOW);
-    } else if (caixas >= 3) {
-      digitalWrite(LED_VERMELHO, LOW);
-      digitalWrite(LED_VERDE, HIGH);
-    } else {
-      digitalWrite(LED_VERMELHO, LOW);
-      digitalWrite(LED_VERDE, LOW);
-    }
-
-    // LCD
-    lcd.setCursor(0, 0);
-    lcd.print("Dist: ");
-    lcd.print((int)distancia);
-    lcd.print(" cm   ");
-
-    lcd.setCursor(0, 1);
-    lcd.print("Cx:");
-    lcd.print(caixas);a
-    lcd.print(" ");
-    lcd.print(status);
-    lcd.print("   ");
-
-    // Serial Debug
-    Serial.print("Dist: ");
-    Serial.print(distancia);
-    Serial.print(" cm | Caixas: ");
-    Serial.print(caixas);
-    Serial.print(" | Status: ");
-    Serial.println(status);
   }
+
+  // LCD
+  lcd.setCursor(0, 0);
+  lcd.print("Dist: ");
+  lcd.print((int)distancia);
+  lcd.print(" cm   ");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Cx:");
+  lcd.print(caixas);
+  lcd.print(" ");
+  lcd.print(status);
+  lcd.print("   ");
 
   delay(600);
 }
