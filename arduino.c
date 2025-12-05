@@ -14,9 +14,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define BUZZER       6
 
 // --- CONFIGURAÇÕES ---
-#define DIST_MAX 30      // Tamanho da prateleira (cm)
-#define TAM_CAIXA 14     // Tamanho da caixa pequena (cm)
-#define MAX_CAIXAS 2     // Número máximo que realmente cabe
+#define DIST_MAX 30
+#define MAX_CAIXAS 2
 
 int caixas_anterior = -1;
 
@@ -39,7 +38,7 @@ void setup() {
   lcd.clear();
 }
 
-// Leitura com média de 3 amostras
+// Leitura com média
 long readDistance() {
   long total = 0;
   int valid = 0;
@@ -62,9 +61,10 @@ long readDistance() {
   return (valid > 0) ? total / valid : 0;
 }
 
+// --- BEEP ALTÍSSIMO PARA MUDANÇA ---
 void beepMudanca() {
-  tone(BUZZER, 2500);
-  delay(250);
+  tone(BUZZER, 5000);   // 5 kHz = muito audível
+  delay(350);
   noTone(BUZZER);
 }
 
@@ -81,21 +81,16 @@ void loop() {
 
   float distancia = duration * 0.0343 / 2.0;
 
-  // --- NOVA LOGICA ---
-  // 0 cm → 2 caixas
-  // 30 cm → 0 caixas
   int caixas = map(distancia, 0, DIST_MAX, MAX_CAIXAS, 0);
-
   if (caixas < 0) caixas = 0;
   if (caixas > MAX_CAIXAS) caixas = MAX_CAIXAS;
 
-  // Situação do estoque
   String status;
-  if (caixas == 0) status = "Vazio";
+  if (caixas == 0) status = "Ruim";
   else if (caixas == 1) status = "Regular";
   else status = "Bom";
 
-  // Detecta mudança
+  // BEEP ALTO QUANDO A QUANTIDADE MUDA
   if (caixas != caixas_anterior) {
     if (caixas_anterior != -1) {
       beepMudanca();
@@ -103,21 +98,24 @@ void loop() {
     caixas_anterior = caixas;
   }
 
-  // LEDs
-  if (caixas == 0) {
+  // --- LEDS E BUZZER ---
+  if (caixas == 0) {   // Estoque ruim
     digitalWrite(LED_VERMELHO, HIGH);
     digitalWrite(LED_VERDE, LOW);
-  }
-  else if (caixas == 2) {
+    tone(BUZZER, 2500);   // Alarme constante
+
+  } else if (caixas == 2) {  // Bom
     digitalWrite(LED_VERMELHO, LOW);
     digitalWrite(LED_VERDE, HIGH);
-  }
-  else {
-    digitalWrite(LED_VERMELHO, LOW);
-    digitalWrite(LED_VERDE, LOW);
+    noTone(BUZZER);
+
+  } else {  // Regular
+    digitalWrite(LED_VERMELHO, HIGH);
+    digitalWrite(LED_VERDE, HIGH);
+    noTone(BUZZER);
   }
 
-  // LCD
+  // --- LCD ---
   lcd.setCursor(0, 0);
   lcd.print("Dist: ");
   lcd.print((int)distancia);
